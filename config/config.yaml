@@ -1,0 +1,40 @@
+set:
+  train: false
+  eval: false
+  debug: false
+  gpus: 1
+  num_workers: 8
+
+path:
+  root_dir: /home/mark/projects/birdSED
+  data_dir: /home/mark/ssd/datasets/DCASE2018/BirdVox/wav
+  meta_dir: /home/mark/ssd/datasets/DCASE2018/BirdVox/meta/birdvox.csv
+  model: ${path.root_dir}/models
+  best_model: ${path.model}/best.ckpt
+  last_model: ${path.model}/latest.ckpt
+
+features:
+  sample_rate: 44100
+  n_fft: 512
+  hop_length: 128
+  n_mels: 64
+  f_min: 500
+  f_max: 16000
+  win_length: ${features.n_fft}
+  window: hann
+  center: true
+  pad_mode: reflect
+
+augmentation:
+  time_mask: 10
+  time_mask_num: 1
+  freq_mask: 10
+  freq_mask_num: 1
+
+training:
+  lr: 0.00001
+  epochs: 100
+  factor: 0.1
+  patience: 10
+  batch_size: 16
+  class_num: 1
