@@ -1,11 +1,7 @@
 import os
 import logging
 import hydra
-import h5py
 import torch
-import pandas as pd
-import numpy as np
-import torch.nn.functional as F
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 
@@ -14,7 +10,7 @@ from tqdm import tqdm
 from glob import glob
 from omegaconf import DictConfig
 
-from model import CNN_Att
+from model import Model
 from prepare_data import prepare_data
 
 @hydra.main(config_path='../config', config_name='config')
@@ -22,15 +18,6 @@ def main(conf: DictConfig):
     if conf.set.train:
         if not os.path.isdir(conf.path.model):
             os.makedirs(conf.path.model)
-
-        data_path = conf.path.data_dir
-        metadata_path = conf.path.meta_dir
-
-        df = pd.read_csv(metadata_path)
-        # TODO train/val split
-        df = df.sample(frac=0.1)
-        df_train = df.sample(frac=0.8, random_state=42)
-        df_val = df.drop(df_train.index)
 
         # load train data
         dataset_train, dataset_val = prepare_data(
@@ -42,8 +29,8 @@ def main(conf: DictConfig):
         )
 
         # Convert preloaded data to torch tensor to use as input in the pytorch Dataloader
-        dataset_train.set_format(type='torch', columns=['audio', 'target', 'hot_target'])
-        dataset_val.set_format(type='torch', columns=['audio', 'target', 'hot_target'])
+        dataset_train.set_format(type='torch', columns=['audio', 'target'])
+        dataset_val.set_format(type='torch', columns=['audio', 'target'])
 
         # Make dataloaders
         train_loader = torch.utils.data.DataLoader(
@@ -61,7 +48,7 @@ def main(conf: DictConfig):
     
         fast_run = True if conf.set.debug else False
         
-        model = CNN_Att(conf)
+        model = Model(conf)
         trainer = pl.Trainer(
             gpus=conf.set.gpus,
             max_epochs=conf.training.epochs,

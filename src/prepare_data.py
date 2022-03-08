@@ -29,8 +29,7 @@ def prepare_data(
     Returns:
         Huggingface datasets
     """
-    datasets.config.IN_MEMORY_MAX_SIZE = 16*(1024**3)
-    dataset = datasets.load_dataset('csv', data_files=csv, split='train[:15%]')
+    dataset = datasets.load_dataset('csv', data_files=csv, split='train[:100%]', keep_in_memory=True)
     dataset = dataset.map(
         audio_file_to_array,
         fn_kwargs={ "data_path": data_path,
@@ -70,8 +69,5 @@ def audio_file_to_array(batch: datasets.arrow_dataset.Dataset,
 
     batch['audio'] = y
     batch['sample_rate'] = sr
-
-    # Creates a hot one encoding version of the label especie_id
-    batch['hot_target'] = batch['target']
 
     return batch
