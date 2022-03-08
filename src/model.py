@@ -12,6 +12,7 @@ from torch import Tensor
 from losses import BCELossModified
 from specaugment import SpecAugment
 import leaf_audio_pytorch.frontend as leaf_audio
+from frontends.pcen import PCENLayer
 from frontends.sincnet import SincNet
 from frontends.strf import STRFNet
 from frontends.TDFbanks import TDFbanks
@@ -184,7 +185,11 @@ class Model(pl.LightningModule):
                     f_max=self.conf.features.f_max,
                 )
             )
-            _frontend_layers.append(self.pcen)
+            _frontend_layers.append(
+                PCENLayer(
+                   n_mels=self.conf.features.n_mels
+                )
+            )
 
         elif self.conf.features.frontend == 'td':
             _frontend_layers.append(
@@ -256,15 +261,15 @@ class Model(pl.LightningModule):
         return x.squeeze()
 
     def training_step(self, batch, batch_idx):
-        X = batch['audio']
-        Y = batch['target'].float()
+        X = batch[0]
+        Y = batch[1].float()
         Y_out = self(X)
         
         train_loss = self.criterion(Y_out, Y)
-        target = batch['target'].int()
+        target = batch[1].int()
         Y_pred = Y_out
         self.train_acc(Y_pred, target)
-        self.train_auroc(Y_pred, target)
+        #self.train_auroc(Y_pred, target)
 
         self.log('train_loss', train_loss)
         self.log('train_acc', self.train_acc, on_step=True, on_epoch=False, prog_bar=True)
@@ -273,19 +278,19 @@ class Model(pl.LightningModule):
         return {'loss': train_loss}
 
     def validation_step(self, batch, batch_idx):
-        X = batch['audio']
-        Y = batch['target'].float()
+        X = batch[0]
+        Y = batch[1].float()
         Y_out = self(X)
 
         val_loss = self.criterion(Y_out, Y)
-        target = batch['target'].int()
+        target = batch[1].int()
         Y_pred = Y_out
         self.val_acc(Y_pred, target)
-        self.val_auroc(Y_pred, target)
+        #self.val_auroc(Y_pred, target)
 
         self.log('val_loss', val_loss)
         self.log('val_acc', self.val_acc, on_step=True, on_epoch=False)
-        self.log('val_auroc', self.val_auroc, on_step=False, on_epoch=True, prog_bar=True)
+        #self.log('val_auroc', self.val_auroc, on_step=False, on_epoch=True, prog_bar=True)
 
         return {'val_loss': val_loss}
 

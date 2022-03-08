@@ -1,9 +1,52 @@
+import os
 import librosa
 import datasets
 import pandas as pd
 import numpy as np
 import datasets
+
+import torch
+from torch.utils.data import Dataset
+
 from typing import Tuple
+
+class birdDataset(Dataset):
+    def __init__(
+        self,
+        annotations_files,
+        root_data_dir,
+        sample_rate
+    ):
+        self.meta = pd.DataFrame()
+        for csv in annotations_files:
+            df1 = pd.read_csv(csv)
+            self.meta = pd.concat([self.meta, df1])
+        self.root_data_dir = root_data_dir
+        self.sample_rate = sample_rate
+
+    def __len__(self):
+        return len(self.meta)
+
+    def __getitem__(self, idx):
+        audio_path = os.path.join(
+            self.root_data_dir,
+            self.meta.iloc[idx, 1],
+            'wav',
+            str(self.meta.iloc[idx, 0])
+        )
+
+        y, sr = librosa.load(
+            audio_path + '.wav',
+            sr=self.sample_rate,
+            mono=True,
+            res_type='kaiser_fast'
+        )
+
+        y = librosa.util.fix_length(y, 441000)
+
+        label = self.meta.iloc[idx, 2]
+
+        return torch.tensor(y), torch.tensor(label)
 
 def prepare_data(
         csv: str,
@@ -29,6 +72,7 @@ def prepare_data(
     Returns:
         Huggingface datasets
     """
+    datasets.set_caching_enabled(False)
     dataset = datasets.load_dataset('csv', data_files=csv, split='train[:100%]', keep_in_memory=True)
     dataset = dataset.map(
         audio_file_to_array,

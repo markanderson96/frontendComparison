@@ -11,26 +11,25 @@ from glob import glob
 from omegaconf import DictConfig
 
 from model import Model
-from prepare_data import prepare_data
+from prepare_data import prepare_data, birdDataset
 
 @hydra.main(config_path='../config', config_name='config')
 def main(conf: DictConfig):
+    csv = [
+        conf.path.bv_dir,
+        conf.path.ff_dir,
+        conf.path.warblr_dir
+    ]
+    dataset = birdDataset(csv, conf.path.data_dir, conf.features.sample_rate)
+    dataset_train, dataset_val, dataset_test = torch.utils.data.random_split(
+        dataset,
+        [int(len(dataset)*0.7), int(len(dataset)*0.2), int(len(dataset)*0.1)],
+        generator=torch.Generator().manual_seed(42)
+    )
+
     if conf.set.train:
         if not os.path.isdir(conf.path.model):
             os.makedirs(conf.path.model)
-
-        # load train data
-        dataset_train, dataset_val = prepare_data(
-            csv=conf.path.meta_dir,
-            data_path=conf.path.data_dir,
-            class_num=conf.training.class_num,
-            sample_rate=conf.features.sample_rate,
-            num_workers=conf.set.num_workers
-        )
-
-        # Convert preloaded data to torch tensor to use as input in the pytorch Dataloader
-        dataset_train.set_format(type='torch', columns=['audio', 'target'])
-        dataset_val.set_format(type='torch', columns=['audio', 'target'])
 
         # Make dataloaders
         train_loader = torch.utils.data.DataLoader(
@@ -49,9 +48,15 @@ def main(conf: DictConfig):
         fast_run = True if conf.set.debug else False
         
         model = Model(conf)
+        checkpoint_cb = pl.callbacks.ModelCheckpoint(
+            dirpath=conf.path.root_dir + '/models',
+            filename=f"resnest50_{conf.features.frontend}",
+            monitor="val_loss"
+        )
         trainer = pl.Trainer(
             gpus=conf.set.gpus,
             max_epochs=conf.training.epochs,
+            callbacks=[checkpoint_cb],
             logger=tb_logger,
             fast_dev_run=fast_run
         )

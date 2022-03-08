@@ -6,15 +6,18 @@ set:
   num_workers: 8
 
 path:
-  root_dir: /home/mark/projects/birdSED
-  data_dir: /home/mark/ssd/datasets/DCASE2018/BirdVox/wav
-  meta_dir: /home/mark/ssd/datasets/DCASE2018/BirdVox/meta/birdvox.csv
+  home_dir: /home/mark
+  root_dir: ${path.home_dir}/projects/birdSED
+  data_dir: ${path.home_dir}/ssd/datasets/DCASE2018/
+  bv_dir: ${path.home_dir}/ssd/datasets/DCASE2018/BirdVox-DCASE-20k/meta/birdvox.csv
+  ff_dir: ${path.home_dir}/ssd/datasets/DCASE2018/ff1010bird/meta/ff1010.csv
+  warblr_dir: ${path.home_dir}/ssd/datasets/DCASE2018/warblrb10k/meta/warblr.csv
   model: ${path.root_dir}/models
   best_model: ${path.model}/best.ckpt
   last_model: ${path.model}/latest.ckpt
 
 features:
-  frontend: td
+  frontend: pcen
   spectaugment: false
   sample_rate: 44100
   n_fft: 512
