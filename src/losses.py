@@ -20,7 +20,7 @@ class BCELossModified(nn.Module):
                              input_)
 
         input_ = torch.where(torch.isinf(input_),
-                             torch.zeros_like(input_),
+                             torch.ones_like(input_),
                              input_)
 
         input_ = input_.clamp(0, 1)

@@ -7,7 +7,7 @@ set:
 
 path:
   home_dir: /home/mark
-  root_dir: ${path.home_dir}/projects/birdSED
+  root_dir: ${path.home_dir}/projects/frontendComparison
   data_dir: ${path.home_dir}/ssd/datasets/DCASE2018/
   bv_dir: ${path.home_dir}/ssd/datasets/DCASE2018/BirdVox-DCASE-20k/meta/birdvox.csv
   ff_dir: ${path.home_dir}/ssd/datasets/DCASE2018/ff1010bird/meta/ff1010.csv
@@ -22,7 +22,7 @@ features:
   sample_rate: 44100
   n_fft: 512
   hop_length: 128
-  n_mels: 64
+  n_mels: 80
   f_min: 500
   f_max: 16000
   win_length: ${features.n_fft}
@@ -37,9 +37,9 @@ augmentation:
   freq_mask_num: 1
 
 training:
-  lr: 0.0001
+  lr: 1E-5
   epochs: 100
   factor: 0.1
   patience: 10
-  batch_size: 8
+  batch_size: 16
   class_num: 1
