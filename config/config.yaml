@@ -3,7 +3,7 @@ set:
   eval: false
   debug: false
   gpus: 1
-  num_workers: 8
+  num_workers: 1
 
 path:
   home_dir: /home/mark
@@ -20,9 +20,9 @@ features:
   frontend: pcen
   spectaugment: false
   sample_rate: 44100
-  n_fft: 512
+  n_fft: 256
   hop_length: 128
-  n_mels: 80
+  n_mels: 40
   f_min: 500
   f_max: 16000
   win_length: ${features.n_fft}
@@ -37,9 +37,9 @@ augmentation:
   freq_mask_num: 1
 
 training:
-  lr: 1E-5
+  lr: 1E-2
   epochs: 100
   factor: 0.1
-  patience: 10
-  batch_size: 16
+  patience: 5
+  batch_size: 32
   class_num: 1

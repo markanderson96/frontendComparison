@@ -10,26 +10,33 @@ from glob import glob
 from omegaconf import DictConfig
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, train_test_split
 
 from model import Model, CNN_Att
-from prepare_data import prepare_data, birdDataset
+from prepare_data import birdDataset
 
 @hydra.main(config_path='../config', config_name='config')
 def main(conf: DictConfig):
     csv = [
-        conf.path.bv_dir,
+        #conf.path.bv_dir,
         conf.path.ff_dir,
         conf.path.warblr_dir
     ]
-    dataset = birdDataset(csv, conf.path.data_dir, conf.features.sample_rate)
-    dataset_train, dataset_val, dataset_test = torch.utils.data.random_split(
-        dataset,
-        [int(len(dataset)*0.7), int(len(dataset)*0.2), int(len(dataset)*0.1)],
-        generator=torch.Generator().manual_seed(42)
-    )
+    df = pd.concat((pd.read_csv(f) for f in csv))
+    df = df.sample(frac=1, random_state=42)
+    df_train, df_test = train_test_split(df, test_size=0.3, train_size=0.7, random_state=42)
+    df_val = df_test.sample(frac=0.5, random_state=42)
+    df_test = df_test.drop(df_val.index)
 
-    model = CNN_Att(conf)
+    df_train = df_train.reset_index(drop=True)
+    df_val = df_val.reset_index(drop=True)
+    df_test = df_test.reset_index(drop=True)
+
+    dataset_train = birdDataset(df_train, conf.path.data_dir, conf.features.sample_rate)
+    dataset_val   = birdDataset(df_val, conf.path.data_dir, conf.features.sample_rate)
+    dataset_test  = birdDataset(df_test, conf.path.data_dir, conf.features.sample_rate)
+
+    model = Model(conf)
 
     fast_run = True if conf.set.debug else False
 
@@ -74,7 +81,7 @@ def main(conf: DictConfig):
     if conf.set.eval:
         test_loader = torch.utils.data.DataLoader(
             dataset_test,
-            batch_size=64,
+            batch_size=8,
             shuffle=False,
             num_workers=conf.set.num_workers
         )
@@ -84,11 +91,13 @@ def main(conf: DictConfig):
         )
         ckpt_path = os.path.join(
             conf.path.model,
-            f"resnest50_{conf.features.frontend}"
+            f"simple_{conf.features.frontend}.ckpt"
         )
-        tester.test(model, ckpt_path=ckpt_path, dataloaders=test_loader)
 
-        splits = 10
+        tester.test(model, ckpt_path=ckpt_path, dataloaders=test_loader)
+        brealpoint()
+
+        splits = 25
         samples_per_split = len(dataset_test)//10
         df = pd.DataFrame()
         for i in range(splits):
@@ -97,21 +106,21 @@ def main(conf: DictConfig):
             dataset_pred = torch.utils.data.Subset(dataset_test, subset)
             pred_loader = torch.utils.data.DataLoader(
                 dataset_pred,
-                batch_size=32,
+                batch_size=8,
                 shuffle=False,
                 num_workers=conf.set.num_workers
             )
             x = tester.predict(model, ckpt_path=ckpt_path, dataloaders=pred_loader)
             x = torch.cat(x)
             x = x.view(-1)
-            df2 = dataset_test.dataset.meta.iloc[dataset_pred.indices]
+            df2 = dataset_test.meta.iloc[dataset_pred.indices]
             df2['pred'] = x.cpu()
             df2['split'] = i
             df2['frontend'] = conf.features.frontend
             df = pd.concat([df, df2])
 
         df.sort_values(by=['split', 'datasetid'])
-        df.to_csv(f"resnest50_{conf.features.frontend}_pred.csv", index=False)
+        df.to_csv(f"simple_{conf.features.frontend}_pred.csv", index=False)
 
 if __name__ == '__main__':
     log_fmt = '%(asctime)s - %(modules)s - %(levelname)s - %(message)s'
