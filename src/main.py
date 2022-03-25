@@ -63,10 +63,14 @@ def main(conf: DictConfig):
             filename=f"efficient_{conf.features.frontend}",
             monitor="val_loss"
         )
+        early_stopping_cb = pl.callbacks.EarlyStopping(
+            monitor='val_loss',
+            patience=10
+        )
         trainer = pl.Trainer(
             gpus=conf.set.gpus,
             max_epochs=conf.training.epochs,
-            callbacks=[checkpoint_cb],
+            callbacks=[checkpoint_cb, early_stopping_cb],
             logger=tb_logger,
             fast_dev_run=fast_run
         )
