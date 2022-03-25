@@ -60,7 +60,7 @@ def main(conf: DictConfig):
         
         checkpoint_cb = pl.callbacks.ModelCheckpoint(
             dirpath=conf.path.model,
-            filename=f"simple_{conf.features.frontend}",
+            filename=f"efficient_{conf.features.frontend}",
             monitor="val_loss"
         )
         trainer = pl.Trainer(
@@ -91,14 +91,14 @@ def main(conf: DictConfig):
         )
         ckpt_path = os.path.join(
             conf.path.model,
-            f"simple_{conf.features.frontend}.ckpt"
+            f"efficient_{conf.features.frontend}.ckpt"
         )
 
         tester.test(model, ckpt_path=ckpt_path, dataloaders=test_loader)
-        brealpoint()
+        input("Press any key to continue")
 
         splits = 25
-        samples_per_split = len(dataset_test)//10
+        samples_per_split = len(dataset_test)//splits
         df = pd.DataFrame()
         for i in range(splits):
             print(f"Split: {i}")
@@ -120,7 +120,7 @@ def main(conf: DictConfig):
             df = pd.concat([df, df2])
 
         df.sort_values(by=['split', 'datasetid'])
-        df.to_csv(f"simple_{conf.features.frontend}_pred.csv", index=False)
+        df.to_csv(f"efficient_{conf.features.frontend}_pred.csv", index=False)
 
 if __name__ == '__main__':
     log_fmt = '%(asctime)s - %(modules)s - %(levelname)s - %(message)s'

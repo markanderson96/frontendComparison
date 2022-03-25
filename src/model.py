@@ -10,7 +10,6 @@ from torch.utils.tensorboard import SummaryWriter
 from typing import Any, Dict, Tuple
 from torch import Tensor
 
-from losses import BCELossModified
 from efficientnet_pytorch import EfficientNet
 from modules import ConvBlock1D, ConvBlock2D, AttnBlock, init_layer
 from specaugment import SpecAugment
@@ -233,23 +232,26 @@ class Model(pl.LightningModule):
             raise Exception("Must specify a valid front-end in config/config.yaml")
 
         self.frontend = nn.Sequential(*_frontend_layers)
-        self.efficient_net = EfficientNet.from_pretrained(
-            'efficientnet-b0', 
-            in_channels=input_channels,
-            num_classes=1
-        )
+        if self.conf.training.pretrained:
+            self.efficient_net = EfficientNet.from_pretrained(
+                'efficientnet-b0', 
+                in_channels=input_channels,
+                num_classes=1
+            )
+        else:
+            self.efficient_net = EfficientNet.from_name(
+                'efficientnet-b0', 
+                in_channels=input_channels,
+                num_classes=1
+            )
 
         #self.resnest = resnest50(input_channels=input_channels)
 
-        self.criterion = nn.BCEWithLogitsLoss()#BCELossModified()
-        multiclass = True if self.conf.training.class_num > 2 else False
+        self.criterion = nn.BCEWithLogitsLoss()
+        multiclass = True if self.conf.training.class_num > 1 else False
         self.train_acc = torchmetrics.Accuracy(
         )
-        self.train_auroc = torchmetrics.AUROC(
-        )
         self.val_acc = torchmetrics.Accuracy(
-        )
-        self.val_auroc = torchmetrics.AUROC(
         )
         self.tb_writer = SummaryWriter()
 
@@ -265,16 +267,7 @@ class Model(pl.LightningModule):
             x = torch.unsqueeze(x, 1)
         # Feed into ResNeSt
         #x = self.resnest(x)
-        x = self.efficient_net(x)
-        # x = F.max_pool2d(F.relu(self.conv1(x)), (2, 2))
-        # x = F.max_pool2d(F.relu(self.conv2(x)), (2, 2))
-        # x = F.max_pool2d(F.relu(self.conv3(x)), (2, 2))
-        # x = F.max_pool2d(F.relu(self.conv4(x)), (2, 2))
-        # x_elements = x.shape[1]*x.shape[2]*x.shape[3]
-        # x = x.view(-1, x_elements)
-        # x = F.relu(nn.Linear(x_elements, 256, device='cuda:0')(x))
-        # x = F.relu(nn.Linear(256, 32, device='cuda:0')(x))
-        # x = nn.Linear(32, 1, device='cuda:0')(x)      
+        x = self.efficient_net(x)  
 
         return x.squeeze()
 
@@ -307,7 +300,7 @@ class Model(pl.LightningModule):
         #self.val_auroc(Y_pred, target)
 
         self.log('val_loss', val_loss)
-        self.log('val_acc', self.val_acc, on_step=True, on_epoch=False)
+        self.log('val_acc', self.val_acc, on_step=True, on_epoch=False, prog_bar=True)
         #self.log('val_auroc', self.val_auroc, on_step=False, on_epoch=True, prog_bar=True)
 
         return {'val_loss': val_loss}
@@ -315,7 +308,7 @@ class Model(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         X = batch[0]
         Y = batch[1].int()
-        Y_out = torch.where(self(X) > -0.3, 1, 0)
+        Y_out = torch.where(self(X) > -0.0, 1, 0)
         acc = torchmetrics.functional.accuracy(Y_out, Y)
 
         self.log('test_acc', acc, on_step=True)
@@ -323,8 +316,8 @@ class Model(pl.LightningModule):
     def predict_step(self, batch, batch_idx):
         X = batch[0]
         Y = batch[1].float()
-        Y_out = torch.where(self(X) > -0.0, 1, 0)
-        return Y_out33
+        Y_out = torch.where(self(X) > 0.0, 1, 0)
+        return Y_out
     
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
