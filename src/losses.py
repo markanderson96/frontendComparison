@@ -11,7 +11,7 @@ class BCELossModified(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.bce = nn.BCEWithLogitsLoss()
+        self.bce = nn.BCELoss()
 
     def forward(self, input, target):
         input_ = input
@@ -23,6 +23,6 @@ class BCELossModified(nn.Module):
                              torch.zeros_like(input_),
                              input_)
 
-        input_ = input_.clamp(0, 1)
+        #input_ = input_.clamp(0, 1)
 
         return self.bce(input_, target)

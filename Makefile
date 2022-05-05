@@ -24,7 +24,7 @@ ifeq (True,$(HAS_CONDA))
 else
 	workon $(PROJECT_NAME)
 endif
-	
+
 ## Install Python Dependencies
 requirements: test_environment
 	$(PYTHON_INTERPRETER) -m pip install -U pip setuptools wheel

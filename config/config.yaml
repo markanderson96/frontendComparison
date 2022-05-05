@@ -2,6 +2,7 @@ set:
   train: false
   eval: false
   debug: false
+  graph: false
   gpus: 1
   num_workers: 1
 
@@ -43,3 +44,4 @@ training:
   patience: 5
   batch_size: 32
   class_num: 1
+  pretrained: false

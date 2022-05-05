@@ -2,6 +2,7 @@ import os
 import logging
 import hydra
 import torch
+import torchaudio
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader
@@ -10,15 +11,18 @@ from glob import glob
 from omegaconf import DictConfig
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import KFold, train_test_split
 
-from model import Model, CNN_Att
+from sklearn.model_selection import KFold, train_test_split
+from figures import gen_figures
+
+from model import Model
+from figures import gen_figures
 from prepare_data import birdDataset
 
 @hydra.main(config_path='../config', config_name='config')
 def main(conf: DictConfig):
     csv = [
-        #conf.path.bv_dir,
+        conf.path.bv_dir,
         conf.path.ff_dir,
         conf.path.warblr_dir
     ]
@@ -36,8 +40,6 @@ def main(conf: DictConfig):
     dataset_val   = birdDataset(df_val, conf.path.data_dir, conf.features.sample_rate)
     dataset_test  = birdDataset(df_test, conf.path.data_dir, conf.features.sample_rate)
 
-    model = Model(conf)
-
     fast_run = True if conf.set.debug else False
 
     if conf.set.train:
@@ -54,10 +56,10 @@ def main(conf: DictConfig):
         val_loader = torch.utils.data.DataLoader(
             dataset_val,
             batch_size=conf.training.batch_size,
-            shuffle=False,
+            shuffle=True,
             num_workers=conf.set.num_workers
         )
-        
+        model = Model(conf=conf)
         checkpoint_cb = pl.callbacks.ModelCheckpoint(
             dirpath=conf.path.model,
             filename=f"efficient_{conf.features.frontend}",
@@ -97,17 +99,16 @@ def main(conf: DictConfig):
             conf.path.model,
             f"efficient_{conf.features.frontend}.ckpt"
         )
-
+        model = Model.load_from_checkpoint(ckpt_path, conf=conf)
         tester.test(model, ckpt_path=ckpt_path, dataloaders=test_loader)
-        input("Press any key to continue")
 
         splits = 25
-        samples_per_split = len(dataset_test)//splits
+        samples_per_split = len(dataset_val)//splits
         df = pd.DataFrame()
         for i in range(splits):
             print(f"Split: {i}")
             subset = np.arange(i*samples_per_split, (i+1)*samples_per_split)
-            dataset_pred = torch.utils.data.Subset(dataset_test, subset)
+            dataset_pred = torch.utils.data.Subset(dataset_val, subset)
             pred_loader = torch.utils.data.DataLoader(
                 dataset_pred,
                 batch_size=8,
@@ -117,7 +118,7 @@ def main(conf: DictConfig):
             x = tester.predict(model, ckpt_path=ckpt_path, dataloaders=pred_loader)
             x = torch.cat(x)
             x = x.view(-1)
-            df2 = dataset_test.meta.iloc[dataset_pred.indices]
+            df2 = dataset_val.meta.iloc[dataset_pred.indices]
             df2['pred'] = x.cpu()
             df2['split'] = i
             df2['frontend'] = conf.features.frontend
@@ -125,6 +126,9 @@ def main(conf: DictConfig):
 
         df.sort_values(by=['split', 'datasetid'])
         df.to_csv(f"efficient_{conf.features.frontend}_pred.csv", index=False)
+
+    if conf.set.graph:
+        gen_figures(conf)
 
 if __name__ == '__main__':
     log_fmt = '%(asctime)s - %(modules)s - %(levelname)s - %(message)s'
