@@ -30,7 +30,7 @@ class ExponentialMovingAverage(nn.Module):
         self._weights = nn.Parameter(ema_tensor, requires_grad=self._trainable)
 
     def forward(self, x, initial_state):
-        w = torch.clamp(self._weights, 0.0, 1.0)
+        w = torch.clamp(self._weights, 0.0, 0.2)
         func = lambda a, y: w * y + (1.0 - w) * a
 
         def scan(foo, x):
@@ -68,10 +68,10 @@ class PCENLayer(nn.Module):
 
     def __init__(self,
                  n_mels: int = 64,
-                 alpha: float = 0.96,
-                 smooth_coef: float = 0.04,
-                 delta: float = 2.0,
-                 root: float = 2.0,
+                 alpha: float = 0.8,
+                 smooth_coef: float = 0.025,#145,
+                 delta: float = 10.0,
+                 root: float = 4.0,
                  floor: float = 1e-6,
                  trainable: bool = True,
                  learn_smooth_coef: bool = True,
@@ -123,13 +123,16 @@ class PCENLayer(nn.Module):
                 trainable=True)
             self.ema.build(num_channels)
         else:
-            # TODO: implement simple RNN here
-            pass
+            self.ema = ExponentialMovingAverage(
+                coeff_init=self._smooth_coef,
+                per_channel=False,
+                trainable=False)
+            self.ema.build(num_channels)
 
     def forward(self, x):
         alpha = torch.minimum(self.alpha, torch.ones_like(self.alpha))
         root = torch.maximum(self.root, torch.ones_like(self.root))
-        x = torch.squeeze(x)
+        x = torch.squeeze(x, 1)
         ema_smoother = self.ema(x, x[:,:,0])
         one_over_root = 1. / root
         output = (x.permute(0,2,1) / (self._floor + ema_smoother) ** alpha + self.delta)\

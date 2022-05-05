@@ -23,6 +23,6 @@ class BCELossModified(nn.Module):
                              torch.zeros_like(input_),
                              input_)
 
-        input_ = input_.clamp(0, 1)
+        #input_ = input_.clamp(0, 1)
 
         return self.bce(input_, target)

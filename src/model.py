@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import pytorch_lightning as pl
 import torchmetrics
 import torchaudio
@@ -7,9 +8,10 @@ from resnest import resnest50
 
 from torch.utils.tensorboard import SummaryWriter
 from typing import Any, Dict, Tuple
-from torch import Tensor
+from torch import Tensor, relu
 
-from losses import BCELossModified
+from efficientnet_pytorch import EfficientNet
+from modules import ConvBlock1D, ConvBlock2D, AttnBlock, init_layer
 from specaugment import SpecAugment
 import leaf_audio_pytorch.frontend as leaf_audio
 from frontends.pcen import PCENLayer
@@ -18,10 +20,11 @@ from frontends.strf import STRFNet
 from frontends.TDFbanks import TDFbanks
 
 class Model(pl.LightningModule):
-    def __init__(self, conf) -> None:
+    def __init__(self, conf=None) -> None:
         super(Model, self).__init__()
+        if conf is None:
+            raise Exception('Must pass config to model')
         self.conf = conf
-        
         # empty list for frontend layers, 
         # all the layers are already defined but depending on
         # what is specified in the config, 
@@ -187,7 +190,10 @@ class Model(pl.LightningModule):
             )
             _frontend_layers.append(
                 PCENLayer(
-                   n_mels=self.conf.features.n_mels
+                    n_mels=self.conf.features.n_mels,
+                    smooth_coef=0.145,
+                    learn_smooth_coef=False,
+                    per_channel_smooth_coef=False
                 )
             )
 
@@ -195,8 +201,9 @@ class Model(pl.LightningModule):
             _frontend_layers.append(
                 TDFbanks(
                     mode='learnfbanks',
-                    nfilters=80,
-                    samplerate=self.conf.features.sample_rate
+                    nfilters=self.conf.features.n_mels,
+                    samplerate=self.conf.features.sample_rate,
+                    wlen=10, wstride=5
                 ) 
             )
 
@@ -213,6 +220,17 @@ class Model(pl.LightningModule):
             _frontend_layers.append(
                 leaf_audio.Leaf(
                     sample_rate=self.conf.features.sample_rate,
+                    compression_fn = PCENLayer(
+                        n_mels=self.conf.features.n_mels,
+                        alpha=0.8,
+                        smooth_coef=0.025,
+                        delta=10.0,
+                        root=4.0,
+                        floor=1e-6,
+                        trainable=True,
+                        learn_smooth_coef=False,
+                        per_channel_smooth_coef=False
+                    )
                 )
             )
 
@@ -229,19 +247,27 @@ class Model(pl.LightningModule):
         else:
             raise Exception("Must specify a valid front-end in config/config.yaml")
 
-        self.frontend = nn.Sequential(*_frontend_layers)        
-        self.resnest = resnest50(input_channels=input_channels)
-        #self.fc = nn.Linear(2048, self.conf.training.class_num)
+        self.frontend = nn.Sequential(*_frontend_layers)
+        if self.conf.training.pretrained:
+            self.efficient_net = EfficientNet.from_pretrained(
+                'efficientnet-b0', 
+                in_channels=input_channels,
+                num_classes=1
+            )
+        else:
+            self.efficient_net = EfficientNet.from_name(
+                'efficientnet-b0', 
+                in_channels=input_channels,
+                num_classes=1
+            )
 
-        self.criterion = BCELossModified()
-        multiclass = True if self.conf.training.class_num > 2 else False
+        self.criterion = nn.BCEWithLogitsLoss()
+        multiclass = True if self.conf.training.class_num > 1 else False
         self.train_acc = torchmetrics.Accuracy(
-        )
-        self.train_auroc = torchmetrics.AUROC(
         )
         self.val_acc = torchmetrics.Accuracy(
         )
-        self.val_auroc = torchmetrics.AUROC(
+        self.test_acc = torchmetrics.Accuracy(
         )
         self.tb_writer = SummaryWriter()
 
@@ -255,8 +281,7 @@ class Model(pl.LightningModule):
         # disgusting workaround below
         if self.conf.features.frontend == 'leaf':  
             x = torch.unsqueeze(x, 1)
-        # Feed into ResNeSt
-        x = self.resnest(x)
+        x = self.efficient_net(x)
 
         return x.squeeze()
 
@@ -267,14 +292,12 @@ class Model(pl.LightningModule):
         
         train_loss = self.criterion(Y_out, Y)
         target = batch[1].int()
-        Y_pred = Y_out
+        Y_pred = torch.where(Y_out > 0.0, 1, 0)
         self.train_acc(Y_pred, target)
-        #self.train_auroc(Y_pred, target)
 
         self.log('train_loss', train_loss)
         self.log('train_acc', self.train_acc, on_step=True, on_epoch=False, prog_bar=True)
-        #self.log('train_auroc', self.train_auroc, on_step=False, on_epoch=True,)
-        
+
         return {'loss': train_loss}
 
     def validation_step(self, batch, batch_idx):
@@ -284,21 +307,33 @@ class Model(pl.LightningModule):
 
         val_loss = self.criterion(Y_out, Y)
         target = batch[1].int()
-        Y_pred = Y_out
+        Y_pred = torch.where(Y_out > 0.0, 1, 0)
         self.val_acc(Y_pred, target)
-        #self.val_auroc(Y_pred, target)
 
         self.log('val_loss', val_loss)
-        self.log('val_acc', self.val_acc, on_step=True, on_epoch=False)
-        #self.log('val_auroc', self.val_auroc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log('val_acc', self.val_acc, on_step=True, on_epoch=False, prog_bar=True)
 
         return {'val_loss': val_loss}
 
+    def test_step(self, batch, batch_idx):
+        X = batch[0]
+        Y = batch[1].int()
+        Y_out = self(X)
+        Y_out = torch.where(Y_out > 0.0, 1, 0)
+        self.val_acc(Y_out, Y)
+
+        self.log('test_acc', self.val_acc)
+
+    def predict_step(self, batch, batch_idx):
+        X = batch[0]
+        Y = batch[1].float()
+        Y_out = torch.where(self(X) > 0.0, 1, 0)
+        return Y_out
+    
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
             self.parameters(),
             lr = self.conf.training.lr,
-            weight_decay=1E-4,
             amsgrad=True
         )
 
@@ -316,3 +351,4 @@ class Model(pl.LightningModule):
         items = super().get_progress_bar_dict()
         items.pop("v_num", None)
         return items
+
